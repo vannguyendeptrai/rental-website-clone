@@ -1,9 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 html,
 body {
   padding: 0;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
     Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  background-color: black;
+  color: white;
 }
 
 a {
@@ -13,6 +19,16 @@ a {
 
 * {
   box-sizing: border-box;
+}
+
+.rdp-cell {
+  height: 75px !important;
+  size: 55px !important;
+}
+
+.rdp-day {
+  border-radius: 0 !important;
+  height: 50px !important;
 }
 
 @media (prefers-color-scheme: dark) {
