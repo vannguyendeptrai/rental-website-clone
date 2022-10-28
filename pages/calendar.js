@@ -1,18 +1,83 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import Script from 'next/script'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
 
-import { isDaySelectable } from 'lib/dates'
-import { getCost } from 'lib/cost'
+import { 
+  isDaySelectable, 
+  addDayToRange, 
+  getDatesBetweenDates,
+  calcNumberOfNightsBetweenDates,
+  getBlockedDates,
+} from 'lib/dates'
+import { getBookedDates } from 'lib/bookings'
+import { getCost, calcTotalCostOfStay } from 'lib/cost'
 
-export default function Calendar() {
+import { useState } from 'react'
+
+import prisma from 'lib/prisma'
+
+export default function Calendar({ bookedDates }) {
+  const [from, setFrom] = useState()
+  const [to, setTo] = useState()
+  const [numberOfNights, setNumberOfNights] = useState(0)
+  const [totalCost, setTotalCost] = useState(0)
+
+  console.log(bookedDates);
+
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const sixMonthsFromNow = new Date()
+  sixMonthsFromNow.setDate(sixMonthsFromNow.getDate() + 30 * 6)
+
+  const handleDayClick = (day) => {
+    const range = addDayToRange(day, {
+      from,
+      to,
+    })
+
+    if (!range.to) {
+      if (!isDaySelectable(range.from, bookedDates)) {
+        alert('This date cannot be selected')
+        return
+      }
+      range.to = range.from
+    }
+
+    if (range.to && range.from) {
+      if (!isDaySelectable(range.to, bookedDates)) {
+        alert('The end date cannot be selected')
+        return
+      }
+    }
+
+    const daysInBetween = getDatesBetweenDates(range.from, range.to)
+
+    for (const dayInBetween of daysInBetween) {
+      if (!isDaySelectable(dayInBetween, bookedDates)) {
+        alert('Some days between those 2 dates cannot be selected')
+        return
+      }
+    }
+  
+    setFrom(range.from)
+    setTo(range.to)
+
+    setNumberOfNights(calcNumberOfNightsBetweenDates(range.from, range.to) + 1)
+    setTotalCost(calcTotalCostOfStay(range.from, range.to))
+  }
+
   return (
     <div>
       <Head>
         <title>Rental Apartment</title>
         <meta name='description' content='Rental Apartment Website' />
         <link rel='icon' href='/favicon.ico' />
+        <>
+          <Script src='https://js.stripe.com/v3/'/>
+        </>
       </Head>
 
       <div className='relative overflow-hidden'>
@@ -48,20 +113,66 @@ export default function Calendar() {
           <p className='text-2xl font-bold text-center my-10'>
             Availability and prices per night
           </p>
+          <p className='text-center'>
+          {numberOfNights > 0 && (
+            <button
+              className='bg-green-500 text-white mt-5 mx-auto w-40 px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm  sm:px-8'
+              onClick={async () => {
+                const res = await fetch('/api/stripe/session', {
+                  body: JSON.stringify({
+                    from,
+                    to,
+                  }),
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  method: 'POST',
+                })
+                const data = await res.json()
+                const sessionId = data.sessionId
+                const stripePublicKey = data.stripePublicKey
+          
+                const stripe = Stripe(stripePublicKey)
+                const { error } = await stripe.redirectToCheckout({
+                  sessionId,
+                })
+          
+                if (error) console.log(error)
+              }}
+            >
+              Book now
+            </button>
+          )}
+          </p>
+          <p className='text-center mt-2'>
+            {totalCost > 0 && `Total cost: $${totalCost}`}
+          </p>
 
           <div className='pt-10 flex justify-center availability-calendar'>
           <DayPicker
+            disabled={[
+              ...getBlockedDates(),
+              ...bookedDates,
+              {
+                from: new Date('0000'),
+                to: yesterday,
+              },
+              {
+                from: sixMonthsFromNow,
+                to: new Date('4000'),
+              },
+            ]}
             components={{
                 DayContent: (props) => (
                 <div
                     className={`relative text-right ${
-                    !isDaySelectable(props.date) && 'text-gray-500'
+                    !isDaySelectable(props.date, bookedDates) && 'text-gray-500'
                     }`}
                 >
                         <div>
                             {props.date.getDate()}
                         </div>
-                        {isDaySelectable(props.date) && (
+                        {isDaySelectable(props.date, bookedDates) && (
                         <div className='-mt-2'>
                             <span
                             className={`bg-white text-black rounded-md font-bold px-1 text-xs`}
@@ -73,10 +184,24 @@ export default function Calendar() {
                 </div>
                 ),
             }}
+            selected={[from, { from, to }]}
+            mode="range"
+            onDayClick={handleDayClick}
             />
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+export async function getServerSideProps() {
+  let bookedDates = await getBookedDates(prisma)
+  bookedDates = JSON.parse(JSON.stringify(bookedDates))
+
+  return {
+    props: {
+      bookedDates,
+    },
+  }
 }
