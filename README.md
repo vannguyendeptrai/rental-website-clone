@@ -13,6 +13,8 @@ yarn dev
 Create .env file under root with details:
 ```bash
 DATABASE_URL="" # your prefer database
+#then run command
+npx prisma migrate dev # or deploy for your env
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
